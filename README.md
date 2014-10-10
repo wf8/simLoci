@@ -7,3 +7,6 @@ Data can be output in a number of formats:
 + STR format (used by _STRUCTURE_)  
 + MIG format (used by _migrate-N_)  
 
+See example usage of data simulated on an input tree analyzed in _migrate-N_ at this [link](...)  
+
+See example usage of data simulated on an input tree analyzed in _STRUCTURE_ at this [link](...)
