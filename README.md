@@ -1,13 +1,13 @@
-The program `simLoci` can be used to simulate sequence data on an input topology with gene flow. It uses a coalescent simulator from the Python package `Egglib` and also requires `Numpy`. 
+## simLoci
+The program `simLoci` can be used to simulate sequence data on an input topology with gene flow. It uses a coalescent simulator from the Python package `Egglib` and also requires `Numpy`. It allows fast simulation of data under a range of parameter values and with data output in a variety of formats:  
 
-Data can be output in a number of formats:  
+     .LOCI (used by pyRAD)  
+     .PHY  (used by raxml)  
+     .NEX  (used by BEAST)  
+     .STR  (used by STRUCTURE)  
+     .MIG  (used by migrate-N)    
 
-     LOCI format (used by _pyRAD_)  
-     PHY format (used by _raxml_)  
-     NEX format (used by _BEAST_)  
-     STR format (used by _STRUCTURE_)  
-     MIG format (used by _migrate-N_)    
-
-Example usage of data simulated on an input tree analyzed in _migrate-N_ [at this link](...)  
-Example usage of data simulated on an input tree analyzed in _STRUCTURE_ [at this link](...)  
+### Example Notebooks
+RADseq-like data simulated on an input tree w/ gene flow analyzed in _migrate-N_ [at this link](...)  
+RADseq-like data simulated on an input tree analyzed in _STRUCTURE_ [at this link](...)  
 
