@@ -1,6 +1,7 @@
 The program `simLoci` can be used to simulate sequence data on an input topology with gene flow. It uses a coalescent simulator from the Python package `Egglib` and also requires `Numpy`. 
 
 Data can be output in a number of formats:  
+
      LOCI format (used by _pyRAD_)  
      PHY format (used by _raxml_)  
      NEX format (used by _BEAST_)  
