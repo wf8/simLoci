@@ -1,0 +1,1 @@
+Simple Python program to simulate sequence data on an input topology with gene flow. It uses the coalescent simulator in the Python package `Egglib` and also requires `Numpy`. 

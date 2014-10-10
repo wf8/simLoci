@@ -4,20 +4,23 @@
 ##  author:  Deren Eaton                                     ##
 ##  contact: deren.eaton@yale.edu                            ##
 ##  date:    10/9/14                                         ##
-##  verstion: 1.1                                            ##
+##  version: 1.0                                             ##
 ###############################################################
 
-################# release notes ###################################
-## version 1.1 -- added output options (m=migrate, k=structure)  ##
-###################################################################
-
-
-## load modules
+## load standard modules
 import getopt
-import egglib
-import sys
-import numpy as np
 import itertools
+import sys
+
+## load external modules
+try: 
+    import egglib
+except ImportError:
+    print "Python package Egglib not found"
+try:
+    import numpy as np
+except ImportError:
+    print "Python package Numpy not found"
 
 ##
 def parseopts(opts):
@@ -40,36 +43,27 @@ def parseopts(opts):
 
         if opt in ["-L"]:
             params["Loci"]    = int(float(arg))
-
         elif opt in ["-l"]:
             params["length"]  = int(float(arg))
-
         elif opt in ["-u"]:
             params["mu"]      = float(arg)
-
         elif opt in ["-N"]:
             params["N"]       = int(float(arg))
-        
         elif opt in ["-i"]:
             params["inds"]    = int(arg)
-
         elif opt in ["-t"]:
             params["tree"]    = str(arg)
-
         elif opt in ["-m"]:
             params["migs"]    = str(arg)
-
         elif opt in ["-o"]:
             params["outname"] = str(arg)
-
         elif opt in ["-f"]:
             params["outform"] = str(arg)
-
-        elif opt in ["-s"]:
-            np.random.seed(int(arg))
-
         elif opt in ["-v"]:
             params["verbose"] = True
+        elif opt in ["-s"]:
+            params["seed"] = int(arg)
+
 
     return params
 
@@ -80,11 +74,9 @@ def checkopts(opts):
 
     
 def usage():
-    
     """
     brief description of various flags and options for this script
     """
-
     print "\nHere is how you can use this script\n"
     print "Usage: python %s"%sys.argv[0]
     print "\t -L <int>   Number of loci to simulate (default 100)"
@@ -176,7 +168,7 @@ def simdata(params):
                                                        alleles= 4,
                                                        randomAncestralState=True)
     mutator.setSites(params["length"])
-    aligns = egglib.simul.coalesce(paramSet, mutator, params["Loci"])
+    aligns = egglib.simul.coalesce(paramSet, mutator, params["Loci"], random=Params["seed"])
     return aligns, tiptax
 
 
