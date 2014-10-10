@@ -168,7 +168,10 @@ def simdata(params):
                                                        alleles= 4,
                                                        randomAncestralState=True)
     mutator.setSites(params["length"])
-    aligns = egglib.simul.coalesce(paramSet, mutator, params["Loci"], random=params["seed"])
+    aligns = egglib.simul.coalesce(paramSet,
+                                   mutator,
+                                   params["Loci"],
+                                   random=np.random.seed(params["seed"]))
     return aligns, tiptax
 
 
