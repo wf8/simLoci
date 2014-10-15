@@ -380,7 +380,7 @@ def makemigrate(outname,tiptax,inds):
             seqs = [i.split(" ")[-1] for i in loci[loc].split("\n") if \
                     i.split(" ")[0].replace(">","") in taxa[group]]
             for i in range(len(seqs)):
-                print >>outfile, "ind"+"_"+str(i)+(" "*(10-len("ind"+"_"+str(i))))+seqs[i]
+                print >>outfile, group+"_i"+str(i)+(" "*(10-len(group+"_i"+str(i))))+seqs[i]
     outfile.close()
 
 
