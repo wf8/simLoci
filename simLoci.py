@@ -466,7 +466,7 @@ if __name__=="__main__":
             print p, params[p]
 
     "print log file "
-    logfile = open(outname+".log",'w')
+    logfile = open(params["outname"]+".log",'w')
     lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
     params["theta"] = 4*params["N"]*lu
     if params["verbose"] == True:
