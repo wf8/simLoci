@@ -350,6 +350,8 @@ def makemigrate(outname,tiptax,inds):
         taxa[group] = []
         for samp in range(inds):
             taxa[group].append(group+str(samp))
+    taxalist = taxa.keys()
+    taxalist.sort()
 
     ## read in data to sample names
     loci  = open(outname+".loci",'r').read().strip().split("|\n")[:]
@@ -359,7 +361,7 @@ def makemigrate(outname,tiptax,inds):
     
     ## print all data for each population at a time
     done = 0
-    for group in taxa:
+    for group in taxalist:
         ## print a list of lengths of each locus
         if not done:
             loclens = [len(loc.split("\n")[0].split(" ")[-1]) for loc in loci]
