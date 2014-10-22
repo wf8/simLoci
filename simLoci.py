@@ -4,7 +4,7 @@
 ##  author:  Deren Eaton                                     ##
 ##  contact: deren.eaton@yale.edu                            ##
 ##  date:    10/9/14                                         ##
-##  version: 1.0                                             ##
+##  version: 1.x                                             ##
 ###############################################################
 
 ## load standard modules
@@ -464,6 +464,15 @@ if __name__=="__main__":
     if params["verbose"] == True:
         for p in params:
             print p, params[p]
+
+    "print log file "
+    logfile = open(outname+".log",'w')
+    lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
+    params["theta"] = 4*params["N"]*lu
+    if params["verbose"] == True:
+        for p in params:
+            print >>logfile, p, params[p]
+    logfile.close()
 
     "simulate data"
     aligns,tiptax = simdata(params)
