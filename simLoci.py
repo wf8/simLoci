@@ -1,3 +1,6 @@
+#!/usr/bin/env python2
+
+"""
 ###############################################################
 ##  Simulate sequence data on an input tree w/ introgression ##
 ##  output in .loci readable format                          ##
@@ -6,6 +9,7 @@
 ##  date:    10/9/14                                         ##
 ##  version: 1.x                                             ##
 ###############################################################
+"""
 
 ## load standard modules
 import getopt
@@ -22,11 +26,10 @@ try:
 except ImportError:
     print "Python package Numpy not found"
 
-##
 def parseopts(opts):
     """ parses options to the command line """
 
-    params = {'Loci':   100,
+    params = {'loci':   100,
               'length': 100,
               'N':      1e6,
               'u':      1e-9,
@@ -39,22 +42,22 @@ def parseopts(opts):
               'verbose':False
               }
 
-    for opt,arg in opts:
+    for opt, arg in opts:
 
         if opt in ["-L"]:
-            params["Loci"]    = int(float(arg))
+            params["Loci"] = int(float(arg))
         elif opt in ["-l"]:
-            params["length"]  = int(float(arg))
+            params["length"] = int(float(arg))
         elif opt in ["-u"]:
-            params["mu"]      = float(arg)
+            params["mu"] = float(arg)
         elif opt in ["-N"]:
-            params["N"]       = int(float(arg))
+            params["N"] = int(float(arg))
         elif opt in ["-i"]:
-            params["inds"]    = int(arg)
+            params["inds"] = int(arg)
         elif opt in ["-t"]:
-            params["tree"]    = str(arg)
+            params["tree"] = str(arg)
         elif opt in ["-m"]:
-            params["migs"]    = str(arg)
+            params["migs"] = str(arg)
         elif opt in ["-o"]:
             params["outname"] = str(arg)
         elif opt in ["-f"]:
@@ -63,28 +66,27 @@ def parseopts(opts):
             params["verbose"] = True
         elif opt in ["-s"]:
             params["seed"] = int(arg)
-
-
     return params
 
 
 def checkopts(opts):
     """ print errors if options are incorrect"""
-    TODO
+    ## 
+    print opts
 
-    
+
 def usage():
     """
     brief description of various flags and options for this script
     """
     print "\nHere is how you can use this script\n"
     print "Usage: python %s"%sys.argv[0]
-    print "\t -L <int>   Number of loci to simulate (default 100)"
-    print "\t -l <int>   length of loci (default 100)"
-    print "\t -u <float> per-site mutation rate (default: 1e-9"
-    print "\t -N <int>   effective population size (default: 1e6)"
-    print "\t -i <int>   number of sampled individuals per tip taxon (default 1)"
-    print "\t -t <str>   tree as a newick string with branch lengths. No polytomy."
+    print "\t -L <int>   Number of loci to simulate (default 100) "
+    print "\t -l <int>   length of loci (default 100) "
+    print "\t -u <float> per-site mutation rate (default: 1e-9 "
+    print "\t -N <int>   effective population size (default: 1e6) "
+    print "\t -i <int>   number of sampled inds per tip taxon (default 1) "
+    print "\t -t <str>   tree as newick string with branch lenghts "
     print "\t -m <str>   migration events in string format (see documentation) "
     print "\t -o <str>   output file prefix "
     print "\t -f <str>   output file format {m=migrate,l=loci,p=phy,n=nex} "
@@ -92,12 +94,12 @@ def usage():
     print "\t -v         verbose output - prints all params to screen"
     
 
-
 def simdata(params):
     "split multiple migrations"
-    migscenarios = [m.lstrip("[").rstrip("]") for m in params["migs"].split('/')]
+    migscenarios = [m.lstrip("[").rstrip("]") for \
+                        m in params["migs"].split('/')]
 
-    "if tree, parse it. Else use fixed tree"
+    ## if tree, parse it. Else use fixed tree"
     if params["tree"]: 
         tre = egglib.Tree(string=params["tree"])
         tiptax = tre.all_leaves()
@@ -386,31 +388,31 @@ def makemigrate(outname,tiptax,inds):
     outfile.close()
 
 
-def makestructure(outname,names):
-    outfile = open(outname+".str",'w')
+def makestructure(outname, names):
+    """ format data for structure output file """
 
-    "randomly select one SNP from each variable locus"
-    loci  = open(outname+".loci",'r').read().strip().split("|\n")[:]
-
-    F = {}  # taxa dict
-    S = {}  # SNP dict
+    ## randomly select one SNP from each variable locus
+    loci = open(outname+".loci", 'r').read().strip().split("|\n")
+    taxa_dict = {}
+    snp_dict = {}
     for name in list(names):
-        F[name] = []
-        S[name] = []
-    longname = max(map(len,names))
+        taxa_dict[name] = []
+        snp_dict[name] = []
+    longname = max([len(n) for n in names])
 
-    " for each locus select out the SNPs"
+    ## for each locus select out the SNPs"
     for loc in loci:
-        ns = []
-        ss = []
+        nameseq = []
+        seqsseq = []
         for line in loc.split("\n"):
             if ">" in line:
-                ns.append(line.split(" ")[0].replace(">",""))
-                ss.append(line.split(" ")[-1])
+                nameseq.append(line.split(" ")[0].replace(">", ""))
+                seqsseq.append(line.split(" ")[-1])
             if "//" in line:
-                snp = [i[0]-(longname+9) for i in enumerate(line) if i[1] in list('*-')]
+                snp = [j[0]-(longname+9) for i,j in \
+                        enumerate(line) if j[1] in list('*-')]
 
-        " assign snps to S"
+        ## assign snps to S
         if snp:
             rando = snp[np.random.randint(len(snp))]
             for tax in F:
@@ -438,18 +440,20 @@ def makestructure(outname,names):
                               
 
 def maketreemix(outname):
-    None
+    """ format data for treemix output file """
+    print outname
+
     
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
-    "parse command-line options"
-    argv = sys.argv[1:]
-    smallflags = "L:l:N:u:i:t:m:o:f:s:v"
-    bigflags = []
+    ## parse command-line options
+    ARGS = sys.argv[1:]
+    SMALLFLAGS = "L:l:N:u:i:t:m:o:f:s:v"
+    BIGFLAGS = []
     try:
-        opts, args = getopt.getopt(argv,smallflags,bigflags)
-        if not opts:
+        OPTS, ARGS = getopt.getopt(ARGS, SMALLFLAGS, BIGFLAGS)
+        if not OPTS:
             usage()
             sys.exit(2)
     except getopt.GetoptError:
@@ -457,27 +461,27 @@ if __name__=="__main__":
         usage()
         sys.exit()
 
-    "get params"
-    params = parseopts(opts)
+    ## get params
+    PARAMS = parseopts(OPTS)
 
-    "print options to screen"
-    lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
-    params["theta"] = 4*params["N"]*lu
-    if params["verbose"] == True:
-        for p in params:
-            print p, params[p]
+    ## print options to screen"
+    # lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
+    # params["theta"] = 4*params["N"]*lu
+    # if params["verbose"] == True:
+    #     for p in params:
+    #         print p, params[p]
 
-    "print log file "
-    logfile = open(params["outname"]+".log",'w')
-    lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
-    params["theta"] = 4*params["N"]*lu
-    if params["verbose"] == True:
-        for p in params:
-            print >>logfile, p, params[p]
-    logfile.close()
+    ## print log file 
+    LOGFILE = open(PARAMS["outname"]+".log", 'w')
+    LU = PARAMS["mu"]*PARAMS["length"]   ## per loc mutation rate/gen
+    PARAMS["theta"] = 4*PARAMS["N"]*LU
+    if PARAMS["verbose"]:
+        for param in PARAMS:
+            print >>LOGFILE, param, PARAMS[param]
+    LOGFILE.close()
 
-    "simulate data"
-    aligns,tiptax = simdata(params)
+    ## simulate data
+    ALIGNS, TIPTAX = simdata(PARAMS)
 
     " append names to seqs"
     names = []
