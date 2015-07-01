@@ -3,11 +3,13 @@
 """
 ###############################################################
 ##  Simulate sequence data on an input tree w/ introgression ##
-##  output in .loci readable format                          ##
+##  output in .loci format and others                        ##
 ##  author:  Deren Eaton                                     ##
 ##  contact: deren.eaton@yale.edu                            ##
-##  date:    10/9/14                                         ##
-##  version: 1.x                                             ##
+##  date:    6/30/15                                         ##
+##  version: 0.9a                                            ##
+##                                                           ##
+##  TODO: allow migration among non-tip taxa                 ##
 ###############################################################
 """
 
@@ -15,6 +17,7 @@
 import getopt
 import itertools
 import sys
+import datetime
 
 ## load external modules
 try: 
@@ -29,23 +32,24 @@ except ImportError:
 def parseopts(opts):
     """ parses options to the command line """
 
+    ## defaults
     params = {'loci':   100,
               'length': 100,
-              'N':      1e6,
-              'u':      1e-9,
+              'N':      int(1e5),
+              'mu':     1e-9,
               'inds':   1,
-              'tree':   0,
+              'tree':   "(((a:1.0,b:1.0):1.0,c:2.0):1.0,d:3.0);",
               'migs':   "",
-              'outname':"",
-              'outform':"",
-              'seed':   123456,
+              'outname': "out",
+              'outform': "l",
+              'seed1':  123456,
+              'seed2':  987654,
               'verbose':False
               }
 
     for opt, arg in opts:
-
         if opt in ["-L"]:
-            params["Loci"] = int(float(arg))
+            params["loci"] = int(float(arg))
         elif opt in ["-l"]:
             params["length"] = int(float(arg))
         elif opt in ["-u"]:
@@ -63,15 +67,17 @@ def parseopts(opts):
         elif opt in ["-f"]:
             params["outform"] = str(arg)
         elif opt in ["-v"]:
-            params["verbose"] = True
-        elif opt in ["-s"]:
-            params["seed"] = int(arg)
+            params["print"] = True
+        elif opt in ["-1"]:
+            params["seed1"] = int(arg)
+        elif opt in ["-2"]:
+            params["seed2"] = int(arg)
     return params
 
 
 def checkopts(opts):
     """ print errors if options are incorrect"""
-    ## 
+    ## should move tree checking functions here...
     print opts
 
 
@@ -81,159 +87,187 @@ def usage():
     """
     print "\nHere is how you can use this script\n"
     print "Usage: python %s"%sys.argv[0]
+    print "\t -o <str>   output file prefix name (required)"
     print "\t -L <int>   Number of loci to simulate (default 100) "
     print "\t -l <int>   length of loci (default 100) "
-    print "\t -u <float> per-site mutation rate (default: 1e-9 "
-    print "\t -N <int>   effective population size (default: 1e6) "
+    print "\t -u <float> per-site mutation rate (default: 1e-9) "
+    print "\t -N <int>   effective population size (default: 1e5) "
     print "\t -i <int>   number of sampled inds per tip taxon (default 1) "
-    print "\t -t <str>   tree as newick string with branch lenghts "
-    print "\t -m <str>   migration events in string format (see documentation) "
-    print "\t -o <str>   output file prefix "
-    print "\t -f <str>   output file format {m=migrate,l=loci,p=phy,n=nex} "
-    print "\t -s <int>   random seed "
-    print "\t -v         verbose output - prints all params to screen"
+    print "\t -t <str>   ultrametric tree w br lens (file or Newick string)"
+    print "\t -s1 <int>  random seed 1 (default 123456)"
+    print "\t -s2 <int>  random seed 2 (default 987654)"
+    #print "\t -v         print version"
+    #print "\t -p <str>   print verbose : prints all params to screen"
+    print "\t -f <str>   output file format {l=loci (default), \n"+\
+    "                                        p=phy, n=nex,\n"+\
+    "                                        a=alleles, v=vcf,\n"+\
+    "                                        t=treemix, k=structure, \n"+\
+    "                                        g=geno, m=migrate} "
+    print "\t -m <str>   migration events in string format:\n"+\
+    "                      e.g., m=5e-5 from b->c \n"+\
+    "                      (forward in time) from time=0.5 to 0.25:\n"+\
+    "                      -m [c,b,0.5,0.25,5e-5]"
+    #print "\t -pt    prints tree info to screen (requires ete2 or biopython)"
     
+
+def lengthtotip(node):
+    """ returns node height """
+    dec = 0.
+    while node.descendants():
+        dec += node.branch_to(node.descendants()[0])
+        node = node.descendants()[0]
+    return dec
+
+def is_ultrametric(tree):
+    """ check if tree is ultrametric """
+    tips = tree.get_terminal_nodes()
+    dist_to_root = []
+    for node in tips:
+        leaf = node.get_label()
+        edgesums = 0
+        while node.ascendants():
+            edgesums += node.branch_from(node.ascendants()[0])
+            node = node.ascendants()[0]
+        dist_to_root.append((leaf, edgesums))
+    if len(set([i[1] for i in dist_to_root])) == 1:
+        return 1
+    else:
+        print "\nError: tree is not ultrametric"
+        for node in dist_to_root:
+            print node[0], "dist_to_root:", node[1]
+        sys.exit(2)
+
 
 def simdata(params):
     "split multiple migrations"
     migscenarios = [m.lstrip("[").rstrip("]") for \
                         m in params["migs"].split('/')]
 
-    ## if tree, parse it. Else use fixed tree"
-    if params["tree"]: 
+    try: 
         tre = egglib.Tree(string=params["tree"])
-        tiptax = tre.all_leaves()
-    else:
-        tiptax = list("ABCDEFGHI")    
-        "clade 1 = ((A,B),C)"
-        "clade 2 = ((D,E),F)"
-        "clade 3 = ((G,H),I)"
-        nodeABCDEFGHI = 3.0 
-        nodeABCDEF = 1.5  
-        nodeGHI   =  0.75 
-        nodeDEF   =  0.75 
-        nodeABC   =  0.75 
-        nodeGH    =  0.5 
-        nodeDE    =  0.5 
-        nodeAB    =  0.5 
+    except IOError:
+        try:
+            tre = egglib.Tree(fname=params["tree"])
+        except IOError:
+            print "\n\tInvalid newick tree input (-t)"
+            sys.exit(2)
+    ## check that tree has branch lengths
+    try: 
+        tre.total_length()
+    except ValueError: 
+        print "\n\tInvalid newick string, tree must have branch lengths"
+        sys.exit(2)
+    ## check that tree is ultrametric
+    is_ultrametric(tre)
 
+    ## get terminal names
+    tiptax = tre.all_leaves()
 
-    "function to return node height"
-    def lengthtotip(node):
-        dec = 0.
-        while node.descendants():
-            dec += node.branch_to(node.descendants()[0])
-            node = node.descendants()[0]
-        return dec
+    ## sets the two parameter classes
+    paramset = egglib.simul.CoalesceParamSet(
+                                singleSamples=None,
+                                doubleSamples=[params["inds"]]*len(tiptax),
+                                M=0.0)
 
-
-    "sets the two parameter classes"
-    paramSet = egglib.simul.CoalesceParamSet(singleSamples=None,
-                                             doubleSamples=[params["inds"]]*len(tiptax),
-                                             M=0.0)
-
-    "traverse tree fusing populations at each node"
+    ## traverse tree fusing populations at each node
     if params["tree"]:
         for node in tre:
             if node.descendants():
                 date = lengthtotip(node)
-                s1 = min([tiptax.index(l) for l in node.descendants()[0].leaves_down()])
-                s2 = min([tiptax.index(l) for l in node.descendants()[1].leaves_down()])
-                paramSet.populationFusion(date,s1,s2)
-    else:
-        "clade 1"
-        paramSet.populationFusion(nodeABC, 0,2)     
-        paramSet.populationFusion(nodeAB, 0,1)      
-        "clade 2"
-        paramSet.populationFusion(nodeDEF, 3,5)     
-        paramSet.populationFusion(nodeDE, 3,4)      
-        "clade 3"
-        paramSet.populationFusion(nodeGHI, 6,8)   
-        paramSet.populationFusion(nodeGH, 6,7)    
-        "together and outgroup"
-        paramSet.populationFusion(nodeABCDEFGHI, 0,6)  
-        paramSet.populationFusion(nodeABCDEF, 0,3)     
+                tip1 = min([tiptax.index(l) for l in \
+                            node.descendants()[0].leaves_down()])
+                tip2 = min([tiptax.index(l) for l in \
+                            node.descendants()[1].leaves_down()])
+                paramset.populationFusion(date, tip1, tip2)
 
 
-    "sets migration patterns "
+    ## sets migration patterns
+    ## ADD MIGRATION BETWEEN ANCESTRAL BRANCHES???
+    ## LOOKING FORWARD IN TIME
     if params["migs"]:
         for mig in migscenarios:
-            p2,p3,s,e,m = mig.split(',')
-            p2 = tiptax.index(p2)
-            p3 = tiptax.index(p3)
-            M = 4.*params["N"]*float(m)
-            paramSet.changePairwiseMigrationRate(0.0, int(p2), int(p3), 0.)
-            paramSet.changePairwiseMigrationRate(float(s), int(p2), int(p3), float(M))
-            paramSet.changePairwiseMigrationRate(float(e), int(p2), int(p3), 0.)
+            recipient, donor, start, end, migration = mig.split(',')
+            if float(start) < float(end):
+                sys.exit("\nError: migration start time should be greater"+\
+                          " than migration end time (present=0) ")
+            irec = tiptax.index(recipient)
+            idon = tiptax.index(donor)
+            imig = 4.*params["N"]*float(migration)
+            paramset.changePairwiseMigrationRate(0.0, int(irec), int(idon), 0.)
+            paramset.changePairwiseMigrationRate(float(start), int(irec), 
+                                                   int(idon), float(imig))
+            paramset.changePairwiseMigrationRate(float(end), int(irec),
+                                                   int(idon), 0.)
 
-    mutator = egglib.simul.CoalesceFiniteAlleleMutator(theta=params["theta"],
-                                                       alleles= 4,
-                                                       randomAncestralState=True)
+    mutator = egglib.simul.CoalesceFiniteAlleleMutator(
+                                            theta=params["theta"],
+                                            alleles=4,
+                                            randomAncestralState=True)
     mutator.setSites(params["length"])
-    aligns = egglib.simul.coalesce(paramSet,
+    aligns = egglib.simul.coalesce(paramset,
                                    mutator,
-                                   params["Loci"],
-                                   random=np.random.seed(params["seed"]))
-    return aligns, tiptax
+                                   params["loci"],
+                                   random=(params["seed1"],
+                                           params["seed2"]))
+
+    return [aligns, tiptax]
 
 
-def hetero(n1,n2):
-    """
-    returns IUPAC symbol for ambiguity bases,
-    used for polymorphic sites.
-    """
-    D = {('G','A'):"R",
-         ('G','T'):"K",
-         ('G','C'):"S",
-         ('T','C'):"Y",
-         ('T','A'):"W",
-         ('C','A'):"M"}
-    a = D.get((n1,n2))
-    b = D.get((n2,n1))
-    if a:
-        return a
+def hetero(base1, base2):
+    """ returns IUPAC symbol for ambiguity bases,
+    used for polymorphic sites. """
+    Basedict = {('G','A'):"R",
+                ('G','T'):"K", 
+                ('G','C'):"S", 
+                ('T','C'):"Y", 
+                ('T','A'):"W", 
+                ('C','A'):"M"}
+    ambig1 = Basedict.get((base1, base2)) 
+    ambig2 = Basedict.get((base2, base1))
+    if ambig1:
+        return ambig1
     else:
-        return b
+        return ambig2
 
 
 def unstruct(amb):
-    amb = amb.upper()
     " returns bases from ambiguity code"
-    D = {"R":["G","A"],
-         "K":["G","T"],
-         "S":["G","C"],
-         "Y":["T","C"],
-         "W":["T","A"],
-         "M":["C","A"],
-         "A":["A","A"],
-         "T":["T","T"],
-         "G":["G","G"],
-         "C":["C","C"],
-         "N":["N","N"],
-         "-":["-","-"]}
-    return D.get(amb)
+    amb = amb.upper()
+    ambdict = {"R":["G","A"],
+               "K":["G","T"],
+               "S":["G","C"],
+               "Y":["T","C"],
+               "W":["T","A"],
+               "M":["C","A"]}
+    if amb in ambdict:
+        return ambdict.get(amb)
+    else:
+        return amb
 
 
-def makehetero(seq1,seq2):
+def makehetero(seq1, seq2):
+    """ take two alleles and return one seqstring with
+    ambiguities for heterozygous sites"""
     seq = ""
-    for base in zip(seq1,seq2):
+    for base in zip(seq1, seq2):
         if base[0] != base[1]:
-            seq += hetero(base[0],base[1])
+            seq += hetero(base[0], base[1])
         else:
             seq += base[0]
     return seq
 
 
-def snpstring(array):
-    snpsite = " "*9
+def snpstring(array, count, longname):
+    """ make a string of snps from an array for .loci output """
+    snpsite = " "*(longname+2)
     for site in array.transpose():
         reals = site.tolist()
         if len(set(reals)) > 1:
-            " convert ambigs to reals"
-            for i in xrange(len(reals)):
-                if reals[i] in list("RWMSYK"):
-                    for j in unstruct(reals[i]):
-                        reals.append(j)
+            ## convert ambigs to reals"
+            for base in xrange(len(reals)):
+                if reals[base] in list("RWMSYK"):
+                    for allele in unstruct(reals[base]):
+                        reals.append(allele)
             reals = [i for i in reals if i not in "RWMSYK"]
             if sorted([reals.count(i) for i in set(reals)], reverse=True)[1] > 1:
                 snpsite += "*"
@@ -241,109 +275,144 @@ def snpstring(array):
                 snpsite += "-"
         else:
             snpsite += " "
-    snpsite += "|"
+    snpsite += "|"+str(count)+"|"
     return snpsite
 
 
-def makeloci(aligns,names,outname):
-    " output file "
-    outloci = open(outname+".loci",'w')
+def makeloci(aligns, names, nloci, outname, outform):
+    """ format data for output in .loci format """
+    ## output file 
+    outloci = open(outname+".loci", 'w')
     
-    " make dictionary with list of loci for each sample "
-    D = {}
-    for i in set(names):
-        D[i] = []
-    for samp in D:
-        for i in aligns:
-            l = []
-            for j in i:
-                if j.name == samp:
-                    l.append(j.sequence)
-            D[samp].append(l) 
+    ## make dictionary with list of loci for each sample
+    ldict = {i:[] for i in set(names)}
+    for sampname in ldict:
+        for loc in aligns:
+            seqlist = []
+            for seqobj in loc:
+                if seqobj.name == sampname:
+                    seqlist.append(seqobj.sequence)
+            ldict[sampname].append(seqlist) 
 
-    " print in .loci readable format used by pyRAD " 
-    nn = D.keys()
-    nn.sort()
+    ## get names in sorted order
+    dicnames = ldict.keys()
+    dicnames.sort()
 
-    if max([len(i) for i in nn]) > 9:
-        print 'error: name lengths too long'; sys.exit(2)
+    ## get longest name length.
+    #if max([len(n) for n in dicnames]) > 9:
+        #print 'error: name lengths too long'
+        #sys.exit(2)
+    longname = max([len(n) for n in dicnames])
     
-    for i in range(params["Loci"]):
-        l = []
-        for n in nn:
-            l.append(list(makehetero(D[n][i][0],D[n][i][1])))
-            print >>outloci, ">"+n + " "*(10-len(n))+ makehetero(D[n][i][0],D[n][i][1])
-        N = np.array(l)
-        print >>outloci, "//"+snpstring(N)
+    ## print each locus to file with a snpstring
+    for locus in range(nloci):
+        seqstring = []
+        for dicname in dicnames:
+            ## make a single seq string with ambiguity chars
+            seqstring.append(list(makehetero(ldict[dicname][locus][0],
+                                             ldict[dicname][locus][1])))
+            print >>outloci, ">"+dicname+" "*(longname-len(dicname)+3)+\
+                                           "".join(seqstring[-1])
+
+        ## print snpstring to final line of locus
+        print >>outloci, "//"+snpstring(np.array(seqstring),
+                                        locus, longname) 
     outloci.close()
+
+    ## .alleles output
+    if 'a' in outform:
+        outalleles = open(outname+".alleles", 'w')
+
+        for locus in range(nloci):
+            seqstring = []
+            for dicname in dicnames:
+                seqstring.append(list(makehetero(ldict[dicname][locus][0],
+                                                 ldict[dicname][locus][1])))
+                print >>outalleles, ">"+dicname+"_0"+\
+                                    " "*(longname-len(dicname)+3)+\
+                                    ldict[dicname][locus][0]
+                print >>outalleles, ">"+dicname+"_1"+\
+                                    " "*(longname-len(dicname)+3)+\
+                                    ldict[dicname][locus][1]
+
+            ## print snpstring to final line of locus
+            print >>outalleles, "//  "+snpstring(np.array(seqstring),
+                                                 locus, longname) 
+        outalleles.close()
+
 
 
 def makephynex(outname, names, phy, nex):
     " order names "
     names = list(names)
     names.sort()
-    longname = max(map(len, names))
+    longname = max([len(n) for n in names])
     
-    " read in loci file "
+    ## read in loci file
     finalfile = open(outname+".loci").read() 
 
-    " dict for saving the full matrix "
-    F = {}
-    for name in names:
-        F[name] = []
+    ## dict for saving the full matrix
+    fdict = {name:[] for name in names}
 
-    " remove empty column sites and append edited seqs to dict F "
-    for loc in [i for i in finalfile.split("|")[:-1]]:
-        anames = [i.split(" ")[0][1:] for i in loc.strip().split("\n")[:-1]]
-        array = np.array([tuple(i.split(" ")[-1]) for i in loc.strip().split("\n")][:-1])
+    ## remove empty column sites and append edited seqs to Fdict
+    loci = finalfile.split("|\n")[:-1]
+    for loc in loci:
+        anames = [i.split()[0].replace(">", "") for \
+                    i in loc.split("\n") if ">" in i]
+        array = np.array(tuple([i.split()[-1].replace(">", "") for \
+                    i in loc.split("\n") if ">" in i]))
         ## which columns are empty
         emps = [i for i in range(len(array.T)) if \
-                np.all([j in ['N','-'] for j in array.T[i]])]
+                np.all([j in ['N', '-'] for j in array.T[i]])]
         ## delete those columns
-        narray = np.delete(array, emps, 1)
+        if emps:
+            narray = np.delete(array, emps, 1)
+        else:
+            narray = array
         ## append data to dict
-        for name in names:
+        for name in set(names):
             if name in anames:
-                F[name] += "".join(narray[anames.index(name)])
+                fdict[name] += "".join(narray[anames.index(name)])
             else:
-                F[name] += "".join(["N"]*len(narray[0]))
+                fdict[name] += "".join(["N"]*len(array[0]))
 
-    
     if phy:
-        " print out .PHY file "
-        superout = open(outname+".phy",'w')
-        print >>superout, len(F), len("".join(F[names[0]]))
+        ## print out .PHY file
+        superout = open(outname+".phy", 'w')
+        print >>superout, len(fdict), len("".join(fdict[names[0]]))
         for name in names:
-            print >>superout, name+(" "*((longname+3)-len(name)))+"".join(F[name])
+            print >>superout, name+(" "*((longname+3)-\
+                              len(name)))+"".join(fdict[name])
         superout.close()
 
-
     if nex:
-        "print out .NEX file"
+        ## print out .NEX file
         nexout = open(outname+".nex", 'w')
 
-        ntax = len(F)
-        nchar = len(F.values()[0])
+        ntax = len(fdict)
+        nchar = len(fdict.values()[0])
 
         print >>nexout, "#NEXUS"
         print >>nexout, "BEGIN DATA;"
-        print >>nexout, "  DIMENSIONS NTAX=%s NCHAR=%s;" % (ntax,nchar)
+        print >>nexout, "  DIMENSIONS NTAX=%s NCHAR=%s;" % (ntax, nchar)
         print >>nexout, "  FORMAT DATATYPE=DNA MISSING=N GAP=- INTERLEAVE=YES;"
         print >>nexout, "  MATRIX"
 
-        n=0
-        sz = 100
-        while n<len(F.values()[0]):
-            for tax in F:
-                print >>nexout, "  "+tax+" "*((longname-len(tax))+3)+"".join(F[tax][n:n+sz])
-            n += sz
+        ## print 100 chars at a time (interleaved format)
+        blockstart = 0
+        block = 100
+        while blockstart < len(fdict.values()[0]):
+            for tax in names:
+                print >>nexout, "  "+tax+" "*((longname-len(tax))+3)+\
+                            "".join(fdict[tax][blockstart:blockstart+block])
+            blockstart += block
             print >>nexout, ""
         print >>nexout, ';'
         print >>nexout, 'END;'
         nexout.close()
 
 
-def makemigrate(outname,tiptax,inds):
+def makemigrate(outname, tiptax, inds):
     outfile = open(outname+".migrate", 'w')
 
     ## cleanup taxadict
@@ -356,103 +425,112 @@ def makemigrate(outname,tiptax,inds):
     taxalist.sort()
 
     ## read in data to sample names
-    loci  = open(outname+".loci",'r').read().strip().split("|\n")[:]
+    loci = open(outname+".loci", 'r').read().strip().split("//")[:-1]
 
-    ## print data to file
-    print >>outfile, len(taxa), len(loci), "( npops nloci for sim data", outname+".loci",")"
+    ## print header to file
+    print >>outfile, len(taxa), len(loci), "("+outname+".loci", ")"
     
     ## print all data for each population at a time
     done = 0
     for group in taxalist:
         ## print a list of lengths of each locus
         if not done:
-            loclens = [len(loc.split("\n")[0].split(" ")[-1]) for loc in loci]
-            print >>outfile, " ".join(map(str,loclens))
+            loclens = [len(loc.split("\n")[1].split()[-1]) \
+                         for loc in loci if ">" in loc]
+            print >>outfile, " ".join([str(i) for i in loclens])
             done += 1
 
         ## print a list of number of individuals in each locus
         indslist = []
         for loc in loci:
-            samps = [i.split(" ")[0].replace(">","") for i in loc.split("\n") if ">" in i]
+            samps = [i.split()[0].replace(">", "") for \
+                       i in loc.split("\n") if ">" in i]
             inds = sum([i in samps for i in taxa[group]])
             indslist.append(inds)
-        print >>outfile, " ".join(map(str,indslist)), group
+        print >>outfile, " ".join([str(i) for i in indslist]), group
 
         ## print sample id, spaces, and sequence data
         #for loc in range(len(keep)):
         for loc in range(len(loci)):
-            seqs = [i.split(" ")[-1] for i in loci[loc].split("\n") if \
-                    i.split(" ")[0].replace(">","") in taxa[group]]
+            seqs = [i.split(' ')[-1] for i in loci[loc].split("\n") if \
+                    i.split(' ')[0].replace(">", "") in taxa[group]]
             for i in range(len(seqs)):
-                print >>outfile, group+"_i"+str(i)+(" "*(10-len(group+"_i"+str(i))))+seqs[i]
+                print >>outfile, group+"_i"+str(i)+\
+                          (" "*(10-len(group+"_i"+str(i))))+seqs[i]
     outfile.close()
 
 
-def makestructure(outname, names):
+def makestructure(outname):
     """ format data for structure output file """
+    print "\nstructure output not implemented yet"
+    # ## randomly select one SNP from each variable locus
+    # loci = open(outname+".loci", 'r').read().strip().split("//")[:-1]
+    # taxa_dict = {}
+    # snp_dict = {}
+    # for name in list(names):
+    #     taxa_dict[name] = []
+    #     snp_dict[name] = []
+    # longname = max([len(n) for n in names])
 
-    ## randomly select one SNP from each variable locus
-    loci = open(outname+".loci", 'r').read().strip().split("|\n")
-    taxa_dict = {}
-    snp_dict = {}
-    for name in list(names):
-        taxa_dict[name] = []
-        snp_dict[name] = []
-    longname = max([len(n) for n in names])
+    # ## for each locus select out the SNPs"
+    # for loc in loci:
+    #     nameseq = []
+    #     seqsseq = []
+    #     for line in loc.split("\n"):
+    #         if ">" in line:
+    #             nameseq.append(line.split(" ")[0].replace(">", ""))
+    #             seqsseq.append(line.split(" ")[-1])
+    #         if "//" in line:
+    #             snp = [j[0]-(longname+9) for i, j in \
+    #                     enumerate(line) if j[1] in list('*-')]
 
-    ## for each locus select out the SNPs"
-    for loc in loci:
-        nameseq = []
-        seqsseq = []
-        for line in loc.split("\n"):
-            if ">" in line:
-                nameseq.append(line.split(" ")[0].replace(">", ""))
-                seqsseq.append(line.split(" ")[-1])
-            if "//" in line:
-                snp = [j[0]-(longname+9) for i,j in \
-                        enumerate(line) if j[1] in list('*-')]
+    #     ## assign snps to S
+    #     if snp:
+    #         rando = snp[np.random.randint(len(snp))]
+    #         for tax in F:
+    #             #print ss[ns.index(tax)][rando]
+    #             S[tax].append(ss[ns.index(tax)][rando])
 
-        ## assign snps to S
-        if snp:
-            rando = snp[np.random.randint(len(snp))]
-            for tax in F:
-                #print ss[ns.index(tax)][rando]
-                S[tax].append(ss[ns.index(tax)][rando])
-
-    " make structure"
-    SF = F.keys()
-    SF.sort()
+    # " make structure"
+    # SF = F.keys()
+    # SF.sort()
     
-    N = np.array([list(S[i]) for i in SF])
-    namescol = list(itertools.chain( * [[i+(" "*(longname-len(i)+3)),
-                                   i+(" "*(longname-len(i)+3))] for i in SF] ))
-    " add blank columns "
-    empty = np.array(["" for i in xrange(len(SF)*2)])
-    OUT = np.array([namescol,empty,empty,empty,empty,empty,empty])
-    for col in xrange(len(N[0])):
-        l = N[:,col]
-        h = [unstruct(j) for j in l]
-        h = list(itertools.chain(*h))
-        bases = list("ATGC")
-        final = [bases.index(i) if i not in list("-N") else '-9' for i in h]
-        OUT = np.vstack([OUT, np.array(final)])
-    np.savetxt(outname+".str", OUT.transpose(), fmt="%s", delimiter="\t")
+    # N = np.array([list(S[i]) for i in SF])
+    # namescol = list(itertools.chain( * [[i+(" "*(longname-len(i)+3)),
+    #                 i+(" "*(longname-len(i)+3))] for i in SF] ))
+    # " add blank columns "
+    # empty = np.array(["" for i in xrange(len(SF)*2)])
+    # OUT = np.array([namescol,empty,empty,empty,empty,empty,empty])
+    # for col in xrange(len(N[0])):
+    #     l = N[:,col]
+    #     h = [unstruct(j) for j in l]
+    #     h = list(itertools.chain(*h))
+    #     bases = list("ATGC")
+    #     final = [bases.index(i) if i not in list("-N") else '-9' for i in h]
+    #     OUT = np.vstack([OUT, np.array(final)])
+    # np.savetxt(outname+".str", OUT.transpose(), fmt="%s", delimiter="\t")
                               
 
 def maketreemix(outname):
     """ format data for treemix output file """
-    print outname
+    print '\ntreemix format not implemented yet'
 
-    
+def makegeno(outname):
+    """ format data for treemix output file """
+    print '\nGENO format not implemented yet'
+
+def makeVCF(outname):
+    """ format data for treemix output file """
+    print '\nVCF format not implemented yet'
+
 
 if __name__ == "__main__":
 
     ## parse command-line options
     ARGS = sys.argv[1:]
-    SMALLFLAGS = "L:l:N:u:i:t:m:o:f:s:v"
-    BIGFLAGS = []
+    SMALLFLAGS = "L:l:N:u:i:t:m:o:f:s1:s2:v:"
     try:
-        OPTS, ARGS = getopt.getopt(ARGS, SMALLFLAGS, BIGFLAGS)
+        OPTS, ARGS = getopt.getopt(ARGS, SMALLFLAGS)
         if not OPTS:
             usage()
             sys.exit(2)
@@ -464,52 +542,76 @@ if __name__ == "__main__":
     ## get params
     PARAMS = parseopts(OPTS)
 
-    ## print options to screen"
-    # lu = params["mu"]*params["length"]   ## per loc mutation rate/gen
-    # params["theta"] = 4*params["N"]*lu
-    # if params["verbose"] == True:
-    #     for p in params:
-    #         print p, params[p]
-
     ## print log file 
     LOGFILE = open(PARAMS["outname"]+".log", 'w')
     LU = PARAMS["mu"]*PARAMS["length"]   ## per loc mutation rate/gen
     PARAMS["theta"] = 4*PARAMS["N"]*LU
-    if PARAMS["verbose"]:
-        for param in PARAMS:
-            print >>LOGFILE, param, PARAMS[param]
+    PARAMKEYS = PARAMS.keys()
+    PARAMKEYS.sort()
+    LONGKEY = max([len(k) for k in PARAMKEYS])
+
+    ## print header
+    print >>LOGFILE, PARAMS["outname"]
+    print >>LOGFILE, str(str(datetime.datetime.now()).split(".")[0])
+    print >>LOGFILE, "------------------------------------------"    
+    if PARAMS['verbose']:
+        print >>sys.stderr, "\n--------------------------------------"    
+        print >>sys.stderr, PARAMS["outname"]+"\t"+\
+                            str(str(datetime.datetime.now()).split(".")[0])
+        print >>sys.stderr, "--------------------------------------"    
+
+    ## print params to file or screen
+    for param in PARAMKEYS:
+        if PARAMS["verbose"]:
+            print >>sys.stderr, param+" "*(LONGKEY-len(param)+4)+" "+\
+                                str(PARAMS[param])
+        print >>LOGFILE, param+" "*(LONGKEY-len(param)+4)+" "+\
+                         str(PARAMS[param])
     LOGFILE.close()
 
     ## simulate data
     ALIGNS, TIPTAX = simdata(PARAMS)
 
-    " append names to seqs"
-    names = []
-    for name in tiptax:
-        for i in range(params["inds"]):
-            names.append(name+str(i))
-            names.append(name+str(i))
+    ## append names to seqs"
+    NAMES = []
+    for tip in TIPTAX:
+        for ind in range(PARAMS["inds"]):
+            NAMES.append(tip+str(ind))
+            NAMES.append(tip+str(ind))
 
-    " appends names for allele 1 vs. allele 2 for each diploid sample "
-    for i in aligns:
-        for s,j in zip(i,names):
-            s.name = j
+    ## appends names for each allele copy in diploid sample 
+    for alignobj in ALIGNS:
+        for copy, cname in zip(alignobj, NAMES):
+            copy.name = cname
 
-    "make default LOCI output "
-    makeloci(aligns,names,params["outname"])
+    ## make default LOCI output 
+    makeloci(ALIGNS, NAMES, PARAMS["loci"], 
+             PARAMS["outname"], PARAMS["outform"])
 
-    "make NEX or PHY outputs "
-    phy = "p" in params["outform"]
-    nex = "n" in params["outform"]
-    if phy or nex:
-        makephynex(params["outname"],names,phy,nex)
+    ## make NEX or PHY outputs 
+    PHY = "p" in PARAMS["outform"]
+    NEX = "n" in PARAMS["outform"]
+    if PHY or NEX:
+        makephynex(PARAMS["outname"], NAMES, PHY, NEX)
 
-    "make MIGRATE outputs "
-    if 'm' in params["outform"]:
-        makemigrate(params["outname"],tiptax,params["inds"])
+    ## make MIGRATE outputs 
+    if 'm' in PARAMS["outform"]:
+        makemigrate(PARAMS["outname"], TIPTAX, PARAMS["inds"])
 
-    "make STRUCTURE outputs "
-    if "k" in params["outform"]:
-        makestructure(params["outname"],names)
+    ## make STRUCTURE outputs 
+    if "k" in PARAMS["outform"]:
+        makestructure(PARAMS["outname"])
+
+    ## make TREEMIX outputs 
+    if "t" in PARAMS["outform"]:
+        maketreemix(PARAMS["outname"])
+
+    ## make GENO outputs 
+    if "g" in PARAMS["outform"]:
+        makegeno(PARAMS["outname"])
+
+    ## make GENO outputs 
+    if "v" in PARAMS["outform"]:
+        makeVCF(PARAMS["outname"])
 
     
