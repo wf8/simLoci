@@ -35,7 +35,14 @@ Usage: python /home/deren/local/bin/simLoci
                      -m [c,b,0.5,0.25,5e-5]
 
 
-simLoci -o "test" -L 500 -l 50 -u 1e-8 -f "lap" 
+simLoci -o "test1" -L 500 -l 50 -u 1e-8 -f "lap" 
+
+simLoci -o "test2" -L 5000 -l 100 -u 1e-8 -N 2e5 -i 5
+
+simLoci -o "test3" -L 500 -l 50 -u 1e-8 -f "lap" -t bigtree.tre
+
+simLoci -o "test4" -L 500 -l 50 -u 1e-8 -f "lap" -t "((a:1,b:1):1,c:2);"
+
 ```
 
 
