@@ -380,9 +380,12 @@ def makephynex(outname, names, phy, nex):
         ## print out .PHY file
         superout = open(outname+".phy", 'w')
         print >>superout, len(fdict), len("".join(fdict[names[0]]))
+        duplicate_names = []
         for name in names:
-            print >>superout, name+(" "*((longname+3)-\
-                              len(name)))+"".join(fdict[name])
+            if name not in duplicate_names:
+                print >>superout, name+(" "*((longname+3)-\
+                                  len(name)))+"".join(fdict[name])
+                duplicate_names.append(name)
         superout.close()
 
     if nex:
@@ -402,9 +405,12 @@ def makephynex(outname, names, phy, nex):
         blockstart = 0
         block = 100
         while blockstart < len(fdict.values()[0]):
+            duplicate_names = []
             for tax in names:
-                print >>nexout, "  "+tax+" "*((longname-len(tax))+3)+\
-                            "".join(fdict[tax][blockstart:blockstart+block])
+                if tax not in duplicate_names:
+                    print >>nexout, "  "+tax+" "*((longname-len(tax))+3)+\
+                                "".join(fdict[tax][blockstart:blockstart+block])
+                    duplicate_names.append(tax)
             blockstart += block
             print >>nexout, ""
         print >>nexout, ';'
@@ -575,9 +581,13 @@ if __name__ == "__main__":
     ## append names to seqs"
     NAMES = []
     for tip in TIPTAX:
-        for ind in range(PARAMS["inds"]):
-            NAMES.append(tip+str(ind))
-            NAMES.append(tip+str(ind))
+        if PARAMS["inds"] == 1:
+            NAMES.append(tip)
+            NAMES.append(tip)
+        else:
+            for ind in range(PARAMS["inds"]):
+                NAMES.append(tip+str(ind))
+                NAMES.append(tip+str(ind))
 
     ## appends names for each allele copy in diploid sample 
     for alignobj in ALIGNS:
